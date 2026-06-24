@@ -27,3 +27,4 @@ output "backend_ecr_url" {
 output "frontend_ecr_url" {
   value = aws_ecr_repository.mandigo_frontend.repository_uri
 }
+# MandiGo ECR Infrastructure
