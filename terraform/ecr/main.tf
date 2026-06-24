@@ -21,10 +21,10 @@ resource "aws_ecr_repository" "mandigo_frontend" {
 }
 
 output "backend_ecr_url" {
-  value = aws_ecr_repository.mandigo_backend.repository_uri
+  value = aws_ecr_repository.mandigo_backend.repository_url
 }
 
 output "frontend_ecr_url" {
-  value = aws_ecr_repository.mandigo_frontend.repository_uri
+  value = aws_ecr_repository.mandigo_frontend.repository_url
 }
 # MandiGo ECR Infrastructure
