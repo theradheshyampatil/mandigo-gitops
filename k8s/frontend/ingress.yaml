@@ -16,3 +16,30 @@ spec:
       services:
         - name: mandigo-frontend-service
           port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mandigo-frontend-redirect
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`projectbyradhe.xyz`)
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+      services:
+        - name: mandigo-frontend-service # Dummy service, redirect happens before reaching this
+          port: 80
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: default
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
