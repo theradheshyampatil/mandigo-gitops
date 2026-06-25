@@ -4,10 +4,17 @@ metadata:
   name: mandigo-frontend-ingress
   namespace: default
   annotations:
-    ingress.kubernetes.io/ssl-redirect: "false"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/certificatesresolvers: "le"
 spec:
+  tls:
+  - hosts:
+      - projectbyradhe.xyz
+    secretName: mandigo-tls-secret
   rules:
-  - http:
+  - host: projectbyradhe.xyz
+    http:
       paths:
       - path: /
         pathType: Prefix
