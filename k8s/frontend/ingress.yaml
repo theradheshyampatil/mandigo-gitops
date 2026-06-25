@@ -11,6 +11,7 @@ spec:
   tls:
   - hosts:
       - projectbyradhe.xyz
+    secretName: mandigo-tls-secret
   rules:
   - host: projectbyradhe.xyz
     http:
