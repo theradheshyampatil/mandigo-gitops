@@ -16,6 +16,6 @@ spec:
       containers:
       - name: frontend
         # PASTE YOUR FULL ECR URI BELOW, REPLACING THE PLACEHOLDER:
-        image: 526955697030.dkr.ecr.ap-south-1.amazonaws.com/mandigo-frontend:d395998057801c342704ec8d559267b815f6148b 
+        image: 526955697030.dkr.ecr.ap-south-1.amazonaws.com/mandigo-frontend:2701c7da32edece56957347d038f6ab14e536279
         ports:
         - containerPort: 80
