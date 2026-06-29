@@ -1,0 +1,43 @@
+# Traefik IngressRoute CRDs for api.projectbyradhe.xyz
+# Reuses the existing `le` Let's Encrypt certResolver and the
+# `redirect-https` Middleware defined in k8s/frontend/ingress.yaml.
+
+# ---- HTTPS (port 443) ----
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mandigo-backend-api-secure
+  namespace: default
+spec:
+  entryPoints:
+    - websecure
+  tls:
+    certResolver: le
+    domains:
+      - main: api.projectbyradhe.xyz
+  routes:
+    - match: Host(`api.projectbyradhe.xyz`)
+      kind: Rule
+      services:
+        - name: mandigo-backend-api-service
+          port: 80
+
+---
+# ---- HTTP (port 80) -> redirect to HTTPS ----
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mandigo-backend-api-redirect
+  namespace: default
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`api.projectbyradhe.xyz`)
+      kind: Rule
+      middlewares:
+        # Defined in k8s/frontend/ingress.yaml — shared across all routes.
+        - name: redirect-https
+      services:
+        - name: mandigo-backend-api-service
+          port: 80
