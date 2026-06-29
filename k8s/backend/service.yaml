@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mandigo-backend-api-service
+  namespace: default
+  labels:
+    app: mandigo-backend-api
+spec:
+  type: ClusterIP
+  selector:
+    app: mandigo-backend-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

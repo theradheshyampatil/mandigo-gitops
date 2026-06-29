@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mandigo-backend-api
+  namespace: default
+  labels:
+    app: mandigo-backend-api
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: mandigo-backend-api
+  template:
+    metadata:
+      labels:
+        app: mandigo-backend-api
+    spec:
+      # No imagePullSecrets needed: ecr-sync.sh pre-pulls images into
+      # K3s's containerd cache via the EC2 instance's IAM role.
+      containers:
+        - name: backend
+          # CI (.github/workflows/backend-ci.yml) auto-bumps this to the
+          # exact :<sha> after every successful build. :latest is just the
+          # bootstrap value so the file is syntactically valid on day 1.
+          image: 526955697030.dkr.ecr.ap-south-1.amazonaws.com/mandigo-backend-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: PORT
+              value: "3000"
+            - name: CORS_ORIGINS
+              value: "https://projectbyradhe.xyz"
+          # K8s probes hit /healthz directly on the container port.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Conservative budget for the c7i-flex.large shared instance.
+          # Hono + Node 20 idle ~60 MB; bump if real traffic warrants it.
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "96Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+      terminationGracePeriodSeconds: 30
