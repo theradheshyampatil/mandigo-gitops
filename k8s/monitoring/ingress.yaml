@@ -36,7 +36,12 @@ spec:
       kind: Rule
       priority: 100
       services:
-        - name: kps-grafana             # fullnameOverride=kps in helmchart values
+        # The kube-prometheus-stack chart bundles `grafana` as a SUBCHART.
+        # Helm subcharts ignore the parent's `fullnameOverride` and use
+        # their own naming: `<release-name>-<subchart-name>`. So even
+        # though the parent chart got renamed to `kps`, Grafana's Service
+        # name is still `kube-prometheus-stack-grafana`.
+        - name: kube-prometheus-stack-grafana
           namespace: monitoring
           port: 80
 
@@ -60,7 +65,7 @@ spec:
         - name: redirect-https
           namespace: monitoring
       services:
-        - name: kps-grafana
+        - name: kube-prometheus-stack-grafana
           namespace: monitoring
           port: 80
 
