@@ -1,0 +1,9 @@
+# Terraform state + local build artifacts — never commit these
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+.build/
+*.zip
+crash.log
