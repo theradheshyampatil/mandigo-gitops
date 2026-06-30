@@ -28,7 +28,7 @@ spec:
           # CI (.github/workflows/backend-ci.yml) auto-bumps this to the
           # exact :<sha> after every successful build. :latest is just the
           # bootstrap value so the file is syntactically valid on day 1.
-          image: 526955697030.dkr.ecr.ap-south-1.amazonaws.com/mandigo-backend-api:da63dbf89f54c181e92131db619aa9ad3e082b66
+          image: 526955697030.dkr.ecr.ap-south-1.amazonaws.com/mandigo-backend-api:2b7bff1e28565d93625f76812fdd6184e454fff5
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
