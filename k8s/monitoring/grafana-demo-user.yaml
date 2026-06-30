@@ -1,0 +1,120 @@
+# =============================================================================
+# Grafana demo (view-only) user provisioner
+#
+# Grafana can't declare extra users via Helm values — only datasources and
+# dashboards are file-provisionable. Users must be created through Grafana's
+# HTTP admin API. So this Job:
+#   1. Waits for Grafana to be healthy
+#   2. Creates a 'demo' user (idempotent — ignores "user already exists")
+#   3. Forces that user's org role to Viewer (read-only)
+#
+# Credentials handed to recruiters:
+#   URL:      https://projectbyradhe.xyz/monitoring
+#   username: demo
+#   password: mandigo-demo
+#   role:     Viewer (can see every dashboard, can change nothing)
+#
+# Runs as an ArgoCD PostSync hook so it executes automatically after the
+# monitoring app syncs, and re-runs on every sync (idempotent, so safe).
+# =============================================================================
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: grafana-demo-user
+  namespace: monitoring
+  annotations:
+    # Run after all normal resources are healthy (Grafana pod up).
+    argocd.argoproj.io/hook: PostSync
+    # Clean up the previous Job before running a new one, so repeated
+    # syncs don't pile up completed Jobs.
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300   # auto-delete 5 min after completion
+  template:
+    metadata:
+      labels:
+        app: grafana-demo-user
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-demo-user
+          image: curlimages/curl:8.11.0
+          env:
+            # Admin creds come from the secret the Grafana subchart creates.
+            # Key names are 'admin-user' and 'admin-password'.
+            - name: GF_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: kube-prometheus-stack-grafana
+                  key: admin-user
+            - name: GF_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kube-prometheus-stack-grafana
+                  key: admin-password
+            # The view-only demo credentials. Change DEMO_PASSWORD here if
+            # you want different creds; re-sync and the Job updates nothing
+            # for an existing user's password (see note below).
+            - name: DEMO_LOGIN
+              value: "demo"
+            - name: DEMO_PASSWORD
+              value: "mandigo-demo"
+            - name: GRAFANA_URL
+              value: "http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+
+              echo "[demo-user] waiting for Grafana to be healthy..."
+              # Grafana /api/health returns 200 with {"database":"ok",...}
+              i=0
+              until curl -sf "${GRAFANA_URL}/api/health" >/dev/null 2>&1; do
+                i=$((i+1))
+                if [ "$i" -ge 40 ]; then
+                  echo "[demo-user] Grafana not healthy after 40 tries, giving up"
+                  exit 1
+                fi
+                echo "[demo-user]   not ready (try $i), sleeping 3s"
+                sleep 3
+              done
+              echo "[demo-user] Grafana is up."
+
+              AUTH="${GF_ADMIN_USER}:${GF_ADMIN_PASSWORD}"
+
+              # --- 1. Create the demo user (idempotent) ----------------------
+              # POST /api/admin/users returns 200 on create, 412 (or 500 with
+              # "user already exists") if it's already there. Either is fine.
+              echo "[demo-user] creating user '${DEMO_LOGIN}'..."
+              CREATE_CODE=$(curl -s -o /tmp/create.json -w "%{http_code}" \
+                -u "$AUTH" \
+                -X POST "${GRAFANA_URL}/api/admin/users" \
+                -H "Content-Type: application/json" \
+                -d "{\"name\":\"Demo Viewer\",\"login\":\"${DEMO_LOGIN}\",\"password\":\"${DEMO_PASSWORD}\",\"OrgId\":1}")
+              echo "[demo-user]   create HTTP ${CREATE_CODE}: $(cat /tmp/create.json)"
+
+              # --- 2. Look up the user's numeric id --------------------------
+              echo "[demo-user] looking up user id..."
+              USER_ID=$(curl -s -u "$AUTH" \
+                "${GRAFANA_URL}/api/users/lookup?loginOrEmail=${DEMO_LOGIN}" \
+                | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+
+              if [ -z "${USER_ID:-}" ]; then
+                echo "[demo-user] could not resolve user id; aborting"
+                exit 1
+              fi
+              echo "[demo-user]   user id = ${USER_ID}"
+
+              # --- 3. Force org role to Viewer (read-only) -------------------
+              echo "[demo-user] setting org role to Viewer..."
+              ROLE_CODE=$(curl -s -o /tmp/role.json -w "%{http_code}" \
+                -u "$AUTH" \
+                -X PATCH "${GRAFANA_URL}/api/orgs/1/users/${USER_ID}" \
+                -H "Content-Type: application/json" \
+                -d '{"role":"Viewer"}')
+              echo "[demo-user]   role HTTP ${ROLE_CODE}: $(cat /tmp/role.json)"
+
+              echo "[demo-user] done. Login '${DEMO_LOGIN}' is a read-only Viewer."
