@@ -1,0 +1,81 @@
+# =============================================================================
+# Traefik IngressRoute for Grafana at https://projectbyradhe.xyz/monitoring
+#
+# How routing decides:
+#   - Existing  Host(`projectbyradhe.xyz`)                      -> mandigo-frontend
+#   - This one  Host(`projectbyradhe.xyz`) && PathPrefix(/monitoring)
+#                                                                -> grafana
+#
+# Traefik uses rule specificity for priority; the more-specific path-prefixed
+# rule wins. We also set priority: 100 explicitly to remove any doubt.
+#
+# Grafana is configured (in helmchart.yaml values) with
+#   root_url: https://projectbyradhe.xyz/monitoring
+#   serve_from_sub_path: true
+# so it handles the /monitoring prefix natively. NO StripPrefix middleware
+# needed (and using one would break Grafana's asset URLs).
+# =============================================================================
+
+# -------- HTTPS (port 443) --------
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grafana-secure
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"   # after HelmChart deploys
+spec:
+  entryPoints:
+    - websecure
+  tls:
+    certResolver: le
+    domains:
+      - main: projectbyradhe.xyz
+  routes:
+    - match: Host(`projectbyradhe.xyz`) && PathPrefix(`/monitoring`)
+      kind: Rule
+      priority: 100
+      services:
+        - name: kps-grafana             # fullnameOverride=kps in helmchart values
+          namespace: monitoring
+          port: 80
+
+---
+# -------- HTTP (port 80) -> HTTPS redirect --------
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grafana-redirect
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`projectbyradhe.xyz`) && PathPrefix(`/monitoring`)
+      kind: Rule
+      priority: 100
+      middlewares:
+        - name: redirect-https
+          namespace: monitoring
+      services:
+        - name: kps-grafana
+          namespace: monitoring
+          port: 80
+
+---
+# Local copy of the redirect-https middleware so we don't cross-namespace
+# reference the one in `default` (Traefik blocks that by default for
+# security). 5 lines of YAML duplication for clean isolation.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-https
+  namespace: monitoring
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true

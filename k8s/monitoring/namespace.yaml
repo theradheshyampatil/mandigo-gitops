@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    pod-security.kubernetes.io/enforce: privileged
+    # node-exporter daemonset needs privileged because it hostmounts /proc
+    # and /sys to read host metrics. Same posture as kube-system.
+  annotations:
+    # Ensure ArgoCD creates the namespace before applying any namespaced
+    # resources in this app (HelmChart targets it, IngressRoute lives in it).
+    argocd.argoproj.io/sync-wave: "-1"
