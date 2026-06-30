@@ -5,12 +5,7 @@ variable "aws_region" {
 }
 
 variable "instance_id" {
-  description = <<-EOT
-    The EC2 instance ID to wake/stop (e.g. i-0abc123...).
-    Find it with: aws ec2 describe-instances \
-      --filters "Name=ip-address,Values=3.6.157.180" \
-      --query 'Reservations[0].Instances[0].InstanceId' --output text
-  EOT
+  description = "The EC2 instance ID to wake/stop (e.g. i-0abc123...)."
   type        = string
 }
 
@@ -18,16 +13,6 @@ variable "keep_alive_minutes" {
   description = "How long the instance stays up after a wake click, in minutes."
   type        = number
   default     = 10
-}
-
-variable "splash_domain" {
-  description = <<-EOT
-    The subdomain to serve the always-on splash page on
-    (e.g. demo.projectbyradhe.xyz). Leave empty to use the default
-    CloudFront *.cloudfront.net domain instead (no ACM cert / DNS needed).
-  EOT
-  type    = string
-  default = ""
 }
 
 variable "project" {
