@@ -1,0 +1,218 @@
+# =============================================================================
+# kube-prometheus-stack — installs Prometheus + Grafana + Alertmanager
+# + node-exporter + kube-state-metrics + the Prometheus Operator.
+#
+# Why HelmChart CRD instead of `helm install`?
+#   K3s ships with a Helm controller (helm.cattle.io/v1) that watches
+#   HelmChart resources and installs/upgrades them automatically. Same
+#   mechanism Traefik uses in /var/lib/rancher/k3s/server/manifests/.
+#   So this manifest lives in Git, ArgoCD applies it, K3s installs the
+#   chart — fully GitOps-managed, zero hand-rolled `helm` commands.
+#
+# What this PR enables for recruiter showcase:
+#   /monitoring  →  Grafana dashboards (anonymous Viewer access, no login)
+#   Grafana ships with K8s + Node + Pod resource dashboards out of the box.
+# =============================================================================
+
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: kube-prometheus-stack
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  repo: https://prometheus-community.github.io/helm-charts
+  chart: kube-prometheus-stack
+  version: "66.2.1"           # latest stable as of 2026-06; pin so re-syncs are deterministic
+  targetNamespace: monitoring
+  createNamespace: false       # we have namespace.yaml
+
+  # Inline Helm values. Keep this lean — the chart's defaults are
+  # generous (1+ GB Prometheus heap, multiple replicas of everything).
+  # On a c7i-flex.large with 8 GB RAM, we want surgical limits.
+  valuesContent: |-
+
+    # -------------------------------------------------------------------------
+    # Cluster-wide settings
+    # -------------------------------------------------------------------------
+    fullnameOverride: kps              # shorter resource names (kps-grafana vs kube-prometheus-stack-grafana)
+    namespaceOverride: monitoring
+
+    # No alertmanager — no PagerDuty/Slack to alert to yet. Saves ~150 MB RAM.
+    alertmanager:
+      enabled: false
+    defaultRules:
+      rules:
+        alertmanager: false
+        etcd: false                    # K3s uses sqlite, not etcd
+        kubeApiserverSlos: false       # less useful on single-node
+        kubeProxy: false               # K3s doesn't run kube-proxy separately
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
+        kubeControllerManager: false
+
+    # -------------------------------------------------------------------------
+    # Prometheus Operator — light-weight management plane
+    # -------------------------------------------------------------------------
+    prometheusOperator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 100Mi
+        limits:
+          cpu: 200m
+          memory: 200Mi
+      admissionWebhooks:
+        # Skip the cert-rotating webhook job — adds complexity, not needed
+        # for single-tenant cluster.
+        enabled: false
+      tls:
+        enabled: false
+
+    # -------------------------------------------------------------------------
+    # Prometheus — the actual metrics store
+    # -------------------------------------------------------------------------
+    prometheus:
+      prometheusSpec:
+        retention: 7d                  # short retention; not a long-term store
+        retentionSize: "3GB"            # cap disk usage on the gp3 EBS volume
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 400Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
+        # Auto-discover all ServiceMonitors / PodMonitors in the cluster
+        # (not just the ones with matching labels in this namespace).
+        # Lets future apps just drop a ServiceMonitor and get scraped.
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+        ruleSelectorNilUsesHelmValues: false
+        probeSelectorNilUsesHelmValues: false
+
+        # Persistent storage via K3s's local-path provisioner (gp3-backed)
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              storageClassName: local-path
+              resources:
+                requests:
+                  storage: 5Gi
+
+    # -------------------------------------------------------------------------
+    # Grafana — the dashboard UI exposed at /monitoring
+    # -------------------------------------------------------------------------
+    grafana:
+      enabled: true
+
+      # Admin password override. TODO: move to a Sealed Secret in PR #14.
+      # Recruiters won't need this (anonymous Viewer access is enabled below);
+      # this is only for you to log in and edit dashboards.
+      adminPassword: "ChangeThisAfterFirstLogin"
+
+      # Configure Grafana for sub-path serving at /monitoring
+      grafana.ini:
+        server:
+          root_url: "https://projectbyradhe.xyz/monitoring"
+          serve_from_sub_path: true
+        # Anonymous read-only access — what recruiters see without logging in
+        auth.anonymous:
+          enabled: true
+          org_role: Viewer
+          org_name: "MandiGo"
+        # Disable the "Welcome" / setup screen for first-time view
+        users:
+          default_theme: dark
+          home_dashboard_uid: "kubernetes-cluster-overview"
+        # Allow embedding so we can iframe dashboards into the SPA later
+        security:
+          allow_embedding: true
+          cookie_samesite: "lax"
+        # Hide the login form (anonymous users won't see a "Sign In" button)
+        auth:
+          disable_login_form: false   # keep enabled so YOU can sign in to edit
+
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 200m
+          memory: 384Mi
+
+      # Persist Grafana state (custom dashboards, prefs, sessions)
+      persistence:
+        enabled: true
+        size: 1Gi
+        storageClassName: local-path
+        accessModes:
+          - ReadWriteOnce
+
+      # Service type — we route through Traefik via ingress.yaml; no LoadBalancer needed
+      service:
+        type: ClusterIP
+        port: 80
+        targetPort: 3000
+
+      # Keep the chart's default dashboards — they're the showcase moneymakers
+      # (K8s overview, Node Exporter Full, Pod resources, etc.)
+      defaultDashboardsEnabled: true
+      defaultDashboardsTimezone: "Asia/Kolkata"
+
+      # Datasources — Prometheus is wired by default; explicit here for clarity
+      sidecar:
+        dashboards:
+          enabled: true
+          searchNamespace: ALL          # let any namespace drop a dashboard ConfigMap
+        datasources:
+          enabled: true
+
+    # -------------------------------------------------------------------------
+    # node-exporter — host-level metrics (CPU, RAM, disk, network)
+    # -------------------------------------------------------------------------
+    nodeExporter:
+      enabled: true
+
+    prometheus-node-exporter:
+      resources:
+        requests:
+          cpu: 30m
+          memory: 30Mi
+        limits:
+          cpu: 100m
+          memory: 50Mi
+
+    # -------------------------------------------------------------------------
+    # kube-state-metrics — Kubernetes object metrics (pod phase, deploy
+    # replicas, PVC capacity, etc.)
+    # -------------------------------------------------------------------------
+    kubeStateMetrics:
+      enabled: true
+
+    kube-state-metrics:
+      resources:
+        requests:
+          cpu: 30m
+          memory: 32Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+
+    # -------------------------------------------------------------------------
+    # K3s-specific overrides — K3s collapses controlPlane components into a
+    # single binary, so default ServiceMonitors for them won't find anything.
+    # -------------------------------------------------------------------------
+    kubeControllerManager:
+      enabled: false
+    kubeScheduler:
+      enabled: false
+    kubeProxy:
+      enabled: false
+    kubeEtcd:
+      enabled: false
