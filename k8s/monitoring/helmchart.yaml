@@ -116,25 +116,38 @@ spec:
       # this is only for you to log in and edit dashboards.
       adminPassword: "ChangeThisAfterFirstLogin"
 
+      # Environment variables override grafana.ini and are the most reliable
+      # way to set auth config. We set anonymous access here so it can't be
+      # defeated by an ini-parsing quirk.
+      #
+      # CRITICAL: GF_AUTH_ANONYMOUS_ORG_NAME must match an EXISTING org.
+      # A fresh Grafana has exactly one org named "Main Org." (with the
+      # trailing period). Pointing anonymous auth at a non-existent org
+      # (the previous "MandiGo" value) silently fails and shows the login
+      # wall — that was the bug this fix corrects.
+      env:
+        GF_AUTH_ANONYMOUS_ENABLED: "true"
+        GF_AUTH_ANONYMOUS_ORG_NAME: "Main Org."
+        GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+
       # Configure Grafana for sub-path serving at /monitoring
       grafana.ini:
         server:
           root_url: "https://projectbyradhe.xyz/monitoring"
           serve_from_sub_path: true
-        # Anonymous read-only access — what recruiters see without logging in
+        # Anonymous read-only access — what recruiters see without logging in.
+        # org_name MUST be an existing org; "Main Org." is the Grafana default.
         auth.anonymous:
           enabled: true
           org_role: Viewer
-          org_name: "MandiGo"
+          org_name: "Main Org."
         # Disable the "Welcome" / setup screen for first-time view
         users:
           default_theme: dark
-          home_dashboard_uid: "kubernetes-cluster-overview"
         # Allow embedding so we can iframe dashboards into the SPA later
         security:
           allow_embedding: true
           cookie_samesite: "lax"
-        # Hide the login form (anonymous users won't see a "Sign In" button)
         auth:
           disable_login_form: false   # keep enabled so YOU can sign in to edit
 
