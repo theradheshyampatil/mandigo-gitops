@@ -32,13 +32,9 @@ spec:
         image: postgres:15
         ports:
         - containerPort: 5432
-        env:
-        - name: POSTGRES_USER
-          value: mandigo_admin
-        - name: POSTGRES_PASSWORD
-          value: SuperSecretPassword123!
-        - name: POSTGRES_DB
-          value: mandigo_marketplace
+        envFrom:
+        - secretRef:
+            name: mandigo-db-credentials
         volumeMounts:
         - name: postgres-data
           mountPath: /var/lib/postgresql/data
