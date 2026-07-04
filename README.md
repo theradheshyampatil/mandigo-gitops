@@ -8,59 +8,88 @@ It follows strict **GitOps and Infrastructure-as-Code (IaC)** methodologies. All
 
 The MandiGo production environment is a highly scalable, automated cloud ecosystem utilizing AWS, Kubernetes, and modern CI/CD practices.
 
+Solid arrows are the live request/data path; dotted arrows are the GitOps
+control plane (build → publish → reconcile).
+
 ```mermaid
 graph TD
-    subgraph "CI/CD & Source Control"
-        GitHubApp((MandiGo App Repo))
-        GitHubGitOps((MandiGo GitOps Repo))
-        GHActions[GitHub Actions CI/CD]
-        
-        GitHubApp -->|Trigger Build| GHActions
-        GHActions -->|Push Images| ECR[AWS ECR]
-        GHActions -->|Update Manifests| GitHubGitOps
+    User(["👤 Users / Recruiters"])
+
+    %% ---------- Always-on edge (wake-on-demand) ----------
+    subgraph EDGE["🌐 Always-on edge"]
+        direction TB
+        Splash["demo.projectbyradhe.xyz<br/>S3 + CloudFront splash"]
+        Wake["Lambda: wake<br/>(Function URL)"]
+        Stop["Lambda: stop<br/>(EventBridge cron ~5m)"]
     end
 
-    subgraph "AWS Cloud Infrastructure (Provisioned via Terraform)"
-        ECR
-        Lambda[AWS Lambda - Serverless Tasks]
-        
-        subgraph "EC2 Instance (K3s Kubernetes Cluster)"
-            Traefik[Traefik Ingress Controller]
-            
-            subgraph "Namespace: argocd"
-                ArgoCD[ArgoCD Controller]
-            end
-            
-            subgraph "Namespace: default"
-                Frontend[MandiGo Frontend Pods]
-                Backend[MandiGo Backend API Pods]
-            end
-            
-            subgraph "Namespace: database"
-                DB[(PostgreSQL Pod)]
-                PVC[EBS Persistent Volume]
-            end
-            
-            subgraph "Namespace: monitoring"
-                Prometheus[Prometheus]
-                Grafana[Grafana Dashboards]
-            end
-            
-            Traefik -->|projectbyradhe.xyz| Frontend
-            Traefik -->|api.projectbyradhe.xyz| Backend
-            Backend --> DB
-            DB --> PVC
-            
-            ArgoCD -.->|Watches & Syncs| Frontend
-            ArgoCD -.->|Watches & Syncs| Backend
-            ArgoCD -.->|Watches & Syncs| DB
-            ArgoCD -.->|Watches & Syncs| Traefik
-            ArgoCD -.->|Watches & Syncs| Prometheus
+    %% ---------- CI/CD control plane ----------
+    subgraph CICD["🔁 CI/CD control plane"]
+        direction TB
+        AppRepo[["mandigo-app repo"]]
+        GHA["GitHub Actions<br/>build · test · dockerize"]
+        ECR[("AWS ECR")]
+        InfraRepo[["mandigo-gitops repo<br/>(desired state)"]]
+    end
+
+    %% ---------- EC2 / K3s cluster ----------
+    subgraph EC2["🖥️ EC2 instance — K3s cluster"]
+        direction TB
+        Traefik{{"Traefik Ingress<br/>Let's Encrypt TLS"}}
+        Argo["ArgoCD"]
+
+        subgraph NSD["namespace: default"]
+            FE["Frontend<br/>React SPA · nginx"]
+            BE["Backend API<br/>Hono · JWT"]
+            Sec[["Secret<br/>DATABASE_URL · JWT_SECRET"]]
+        end
+
+        subgraph NSDB["namespace: database"]
+            DB[("Postgres<br/>StatefulSet · mandigo-db-0")]
+            PVC[["PVC 5Gi<br/>local-path"]]
+        end
+
+        subgraph NSM["namespace: monitoring"]
+            Prom["Prometheus"]
+            Graf["Grafana"]
         end
     end
-    
-    GitHubGitOps -.->|ArgoCD Pulls State| ArgoCD
-    User((Users)) -->|HTTPS| Traefik
+
+    %% ================= LIVE PATH (solid) =================
+    User -->|HTTPS| Traefik
+    User -->|"① wake button"| Splash
+    Splash -->|POST| Wake
+    Wake -->|"StartInstances + WakeUntil tag"| EC2
+    Stop -->|"StopInstances when expired"| EC2
+
+    Traefik -->|"projectbyradhe.xyz"| FE
+    Traefik -->|"api.projectbyradhe.xyz"| BE
+    Traefik -->|"argocd.projectbyradhe.xyz"| Argo
+    Traefik -->|"grafana.projectbyradhe.xyz"| Graf
+
+    FE -->|"REST /api/v1"| BE
+    BE -->|"TCP 5432"| DB
+    BE -. injects env .-> Sec
+    DB --> PVC
+    Prom -->|"scrape /metrics"| BE
+    Prom --> Graf
+
+    %% ================= GITOPS PLANE (dotted) =================
+    AppRepo -.->|push to main| GHA
+    GHA -.->|push image| ECR
+    GHA -.->|bump image tag| InfraRepo
+    InfraRepo -.->|pull desired state| Argo
+    Argo -.->|reconcile| FE
+    Argo -.->|reconcile| BE
+    Argo -.->|reconcile| DB
+    ECR -.->|"pull image (IAM role)"| EC2
+
+    classDef edge fill:#fef3c7,stroke:#d97706,color:#7c2d12;
+    classDef ci fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef data fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    class Splash,Wake,Stop edge;
+    class AppRepo,GHA,ECR,InfraRepo ci;
+    class DB,PVC,Sec data;
 ```
 
 ## 🗂 Complete Repository Directory Structure
