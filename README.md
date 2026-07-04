@@ -129,13 +129,24 @@ When deploying a fresh cluster, you must manually create the necessary Kubernete
 
 You must SSH into the EC2 instance and create the following secrets:
 
-**1. Database Credentials (for Backend)**
-The backend pod requires the connection string to talk to Postgres.
+**1. Backend Secrets (`default` namespace)**
+The backend pod requires the Postgres connection string **and** the JWT
+signing key. Both live in a single `mandigo-db-credentials` Secret. The
+`JWT_SECRET` is mandatory — the backend validates it at boot (min 32 chars)
+and refuses to start without it (no more hardcoded fallback key). Generate a
+strong random value, e.g. `openssl rand -hex 32`.
 ```bash
 kubectl create secret generic mandigo-db-credentials \
   --namespace=default \
-  --from-literal=DATABASE_URL="postgresql://mandigo_admin:YOUR_PASSWORD@mandigo-db-service.database.svc.cluster.local:5432/mandigo_marketplace"
+  --from-literal=DATABASE_URL="postgresql://mandigo_admin:YOUR_PASSWORD@mandigo-db-service.database.svc.cluster.local:5432/mandigo_marketplace" \
+  --from-literal=JWT_SECRET="$(openssl rand -hex 32)"
 ```
+
+> Already have the Secret from a previous deploy? Add just the new key:
+> ```bash
+> kubectl patch secret mandigo-db-credentials -n default \
+>   --type=merge -p "{\"stringData\":{\"JWT_SECRET\":\"$(openssl rand -hex 32)\"}}"
+> ```
 
 **2. Database Credentials (for Postgres)**
 The Postgres pod requires the raw credentials to initialize the database.

@@ -12,12 +12,39 @@ spec:
     requests:
       storage: 5Gi
 ---
+# Headless service — gives the StatefulSet stable network identity.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mandigo-db-headless
+  namespace: database
+spec:
+  clusterIP: None
+  selector:
+    app: mandigo-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+# Postgres runs as a StatefulSet, not a Deployment.
+#
+# Why: a Deployment on a ReadWriteOnce PVC can try to surge a second pod
+# during a rollout, which either deadlocks (the new pod can't mount the
+# already-attached volume) or — worse — briefly runs two Postgres processes
+# against the same data dir and corrupts it. A single-replica StatefulSet
+# updates by terminating the old pod BEFORE starting the new one, so the
+# RWO volume is only ever held by one pod at a time.
+#
+# The existing standalone PVC (mandigo-db-pvc) is reused as-is via a plain
+# volume reference rather than volumeClaimTemplates, so no data migration is
+# needed when switching from the old Deployment.
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: mandigo-db
   namespace: database
 spec:
+  serviceName: mandigo-db-headless
   replicas: 1
   selector:
     matchLabels:
@@ -31,13 +58,43 @@ spec:
       - name: postgres
         image: postgres:15
         ports:
-        - containerPort: 5432
+        - name: postgres
+          containerPort: 5432
         envFrom:
         - secretRef:
             name: mandigo-db-credentials
         volumeMounts:
         - name: postgres-data
           mountPath: /var/lib/postgresql/data
+        # Probes use pg_isready against the local socket. POSTGRES_USER /
+        # POSTGRES_DB come from the mandigo-db-credentials Secret (envFrom).
+        readinessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1'
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        livenessProbe:
+          exec:
+            command:
+              - sh
+              - -c
+              - 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" -h 127.0.0.1'
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
       volumes:
       - name: postgres-data
         persistentVolumeClaim:
