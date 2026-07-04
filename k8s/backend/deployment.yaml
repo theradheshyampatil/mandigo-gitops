@@ -48,6 +48,15 @@ spec:
                 secretKeyRef:
                   name: mandigo-db-credentials
                   key: DATABASE_URL
+            # Signing key for auth JWTs. Required by the backend (lib/env.ts
+            # validates it at boot, min 32 chars) — the pod refuses to start
+            # if this key is missing. Add JWT_SECRET to the existing
+            # mandigo-db-credentials Secret (see README "Secrets Management").
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: mandigo-db-credentials
+                  key: JWT_SECRET
           # ---- Probes (3-tier: startup -> liveness + readiness) -----------
           #
           # startupProbe gates liveness/readiness until the app finishes its
