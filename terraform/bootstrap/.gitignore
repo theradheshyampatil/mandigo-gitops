@@ -1,0 +1,8 @@
+# This module's state is LOCAL by design (it bootstraps the remote backend).
+# Never commit it.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+crash.log

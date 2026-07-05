@@ -1,40 +1,71 @@
-name: 'Terraform Apply - Build AWS ECR'
+name: 'Terraform Apply - AWS ECR'
 
 on:
   push:
     paths:
-      - 'terraform/**'      # Only run when Terraform files change
+      - 'terraform/ecr/**'   # Only the ECR module is CI-managed (wake/bootstrap are manual)
     branches:
-      - main                # Only run on the main branch
+      - main
+
+# Least-privilege token: id-token lets us do keyless OIDC auth to AWS;
+# contents:read is all checkout needs. No other scopes are granted.
+permissions:
+  id-token: write
+  contents: read
+
+# Never let two applies race on the same remote state.
+concurrency:
+  group: terraform-ecr
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  TF_STATE_KEY: ecr/terraform.tfstate
+  TF_LOCK_TABLE: mandigo-tf-lock
 
 jobs:
-  deploy-infrastructure:
-    name: 'Create MandiGo ECR Repositories'
-    runs-on: ubuntu-latest  # Rent a temporary Ubuntu computer from GitHub
+  terraform:
+    name: 'Terraform (ECR)'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform/ecr
 
     steps:
-      # Step 1: Download our code from GitHub
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Step 2: Log into AWS using the keys you gave GitHub
-      - name: Configure AWS Credentials
+      # Keyless auth via GitHub OIDC — no long-lived AWS keys in secrets.
+      # AWS_ROLE_ARN and AWS_STATE_BUCKET come from terraform/bootstrap outputs
+      # (see terraform/bootstrap/README.md). Store them as repo secrets/vars.
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      # Step 3: Install Terraform on the GitHub computer
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      # Step 4: Initialize Terraform
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform/ecr
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
 
-      # Step 5: Tell Terraform to build the ECR in AWS (-auto-approve means don't ask for human permission)
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.AWS_STATE_BUCKET }}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="dynamodb_table=${TF_LOCK_TABLE}" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -out=tfplan
+
+      # Apply only the reviewed plan. Runs on push to main (post-merge),
+      # so the plan has already been visible in the PR's checks.
       - name: Terraform Apply
-        run: terraform apply -auto-approve
-        working-directory: ./terraform/ecr
+        run: terraform apply -input=false -auto-approve tfplan

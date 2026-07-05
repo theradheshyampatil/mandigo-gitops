@@ -1,10 +1,12 @@
+# MandiGo ECR Infrastructure
+
 provider "aws" {
   region = "ap-south-1"
 }
 
 # ECR for MandiGo Backend
 resource "aws_ecr_repository" "mandigo_backend" {
-  name = "mandigo-backend-api"
+  name                 = "mandigo-backend-api"
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration {
     scan_on_push = true
@@ -13,7 +15,7 @@ resource "aws_ecr_repository" "mandigo_backend" {
 
 # ECR for MandiGo Frontend
 resource "aws_ecr_repository" "mandigo_frontend" {
-  name = "mandigo-frontend"
+  name                 = "mandigo-frontend"
   image_tag_mutability = "MUTABLE"
   image_scanning_configuration {
     scan_on_push = true
@@ -27,4 +29,3 @@ output "backend_ecr_url" {
 output "frontend_ecr_url" {
   value = aws_ecr_repository.mandigo_frontend.repository_url
 }
-# MandiGo ECR Infrastructure
