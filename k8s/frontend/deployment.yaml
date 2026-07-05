@@ -3,8 +3,16 @@ kind: Deployment
 metadata:
   name: mandigo-frontend
   namespace: default
+  labels:
+    app: mandigo-frontend
 spec:
   replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0   # keep the old pod serving until the new one is Ready
+      maxSurge: 1
   selector:
     matchLabels:
       app: mandigo-frontend
@@ -15,7 +23,54 @@ spec:
     spec:
       containers:
       - name: frontend
-        # PASTE YOUR FULL ECR URI BELOW, REPLACING THE PLACEHOLDER:
+        # CI (mandigo-app/.github) auto-bumps this to the exact :<sha> after
+        # every successful build. The tag here is just the last-deployed value.
         image: 526955697030.dkr.ecr.ap-south-1.amazonaws.com/mandigo-frontend:f44e12a358f4f15c848ec1b8dee48635694af40c
+        imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 80
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        # ---- Probes -----------------------------------------------------
+        # Nginx serves the static SPA; a 200 on "/" means it's up and the
+        # bundle is mounted. readiness gates traffic during rollout so users
+        # never hit a half-started pod; liveness restarts a wedged worker.
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+        # ---- Resources --------------------------------------------------
+        # Static Nginx is tiny; a limit protects the single node from a
+        # runaway worker without starving legitimate traffic.
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "24Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+        # ---- Security ---------------------------------------------------
+        # Conservative hardening that is safe for the stock `nginx:1.27-alpine`
+        # image (its master must stay root to bind :80 and spawn workers).
+        # allowPrivilegeEscalation:false blocks setuid-based privilege gains
+        # without removing the capabilities nginx actually needs.
+        #
+        # For full non-root + readOnlyRootFilesystem hardening, switch the
+        # frontend Dockerfile (in mandigo-app) to `nginxinc/nginx-unprivileged`
+        # which listens on 8080 as a non-root user — then this can mirror the
+        # backend's securityContext. Tracked as a follow-up.
+        securityContext:
+          allowPrivilegeEscalation: false
+      terminationGracePeriodSeconds: 15
