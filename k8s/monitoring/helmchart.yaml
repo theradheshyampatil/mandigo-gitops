@@ -112,11 +112,10 @@ spec:
       enabled: true
 
       # Admin credentials come from a manually-created Secret, NOT from a
-      # plaintext value in Git. Create it once before syncing this app:
-      #   cp k8s/monitoring/grafana-admin.secret.example.yaml \
-      #      k8s/monitoring/grafana-admin.secret.yaml
-      #   # edit it, then:
-      #   kubectl apply -f k8s/monitoring/grafana-admin.secret.yaml
+      # plaintext value in Git. Create it once BEFORE syncing this app, from
+      # OUTSIDE any ArgoCD-synced path (never drop a real secret in k8s/):
+      #   examples/secrets/grafana-admin-credentials.example.yaml
+      #   -> edit a copy in /tmp, then `kubectl apply -f /tmp/gf.yaml`
       #
       # Recruiters never need this (anonymous Viewer access is enabled below);
       # it's only for YOU to log in and edit dashboards. The grafana-demo-user

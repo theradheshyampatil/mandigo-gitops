@@ -41,8 +41,9 @@ spec:
               value: "3000"
             - name: CORS_ORIGINS
               value: "https://projectbyradhe.xyz"
-            # PR #6: DATABASE_URL injected from the Secret defined in
-            # k8s/backend/secret.yaml (same namespace).
+            # DATABASE_URL injected from the manually-created mandigo-db-credentials
+            # Secret (same namespace). Template: examples/secrets/ — never store a
+            # real secret in this path; ArgoCD would apply & commit it.
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
