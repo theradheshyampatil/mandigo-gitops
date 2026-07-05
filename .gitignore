@@ -1,0 +1,17 @@
+# Real Kubernetes Secrets — only *.example.yaml templates belong in Git.
+# Never commit filled-in secret manifests.
+secret.yaml
+**/secret.yaml
+*-secret.yaml
+!*.example.yaml
+
+# Terraform local state / build artifacts (belt-and-suspenders; each module
+# also has its own .gitignore).
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/.terraform.lock.hcl
+**/terraform.tfvars
+**/.build/
+*.zip
+crash.log
