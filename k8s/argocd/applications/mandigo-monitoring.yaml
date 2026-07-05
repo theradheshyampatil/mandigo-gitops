@@ -1,0 +1,28 @@
+# kube-prometheus-stack (Prometheus + Grafana) + IngressRoute + demo-user Job,
+# namespace `monitoring`. The namespace itself is created by the manifests in
+# k8s/monitoring (namespace.yaml, sync-wave -1).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mandigo-monitoring
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/theradheshyampatil/mandigo-gitops
+    targetRevision: HEAD
+    path: k8s/monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The HelmChart CRD + PostSync Job can momentarily report as
+      # out-of-order during a fresh install; retry smooths that over.
+      - ApplyOutOfSyncOnly=true

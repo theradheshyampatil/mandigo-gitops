@@ -1,0 +1,28 @@
+# Backend API — Hono + Drizzle, namespace `default`.
+#
+# NOTE: the live app currently has automated-sync DISABLED, which is why it
+# sits "OutOfSync" in the ArgoCD UI. We normalize to automated + selfHeal here
+# (matching the other three apps) so a git push actually rolls out and drift
+# self-heals. That is the intended behavior for a CI-driven GitOps repo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mandigo-backend-api
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/theradheshyampatil/mandigo-gitops
+    targetRevision: HEAD
+    path: k8s/backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

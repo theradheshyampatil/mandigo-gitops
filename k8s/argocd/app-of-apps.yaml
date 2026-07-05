@@ -1,0 +1,35 @@
+# =============================================================================
+# Root "app-of-apps" — the single Application you apply by hand ONCE. It then
+# manages every other MandiGo Application declaratively from Git, so the four
+# app definitions below are version-controlled instead of living only in the
+# cluster (where they were created by hand with `argocd app create`).
+#
+# Bootstrap on a fresh cluster:
+#   kubectl apply -f k8s/argocd/applications/app-of-apps.yaml
+#
+# Adopting this on the EXISTING cluster (where the 4 apps already exist):
+#   The child specs below match the live apps, so applying this is a no-op
+#   sync that simply brings them under Git management. ArgoCD adopts existing
+#   resources by name — it will not recreate or delete anything.
+# =============================================================================
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mandigo-root
+  namespace: argocd
+  # Keep the root app from being pruned by itself.
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/theradheshyampatil/mandigo-gitops
+    targetRevision: HEAD
+    path: k8s/argocd/applications
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

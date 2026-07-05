@@ -1,0 +1,28 @@
+# PostgreSQL StatefulSet, namespace `database`.
+#
+# prune is intentionally DISABLED for the database app: an accidental bad sync
+# should never be able to delete the PVC / StatefulSet and take the data with
+# it. selfHeal stays on so config drift is corrected, but destructive prunes
+# require a human.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mandigo-database
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/theradheshyampatil/mandigo-gitops
+    targetRevision: HEAD
+    path: k8s/database
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: database
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
