@@ -111,10 +111,20 @@ spec:
     grafana:
       enabled: true
 
-      # Admin password override. TODO: move to a Sealed Secret in PR #14.
-      # Recruiters won't need this (anonymous Viewer access is enabled below);
-      # this is only for you to log in and edit dashboards.
-      adminPassword: "ChangeThisAfterFirstLogin"
+      # Admin credentials come from a manually-created Secret, NOT from a
+      # plaintext value in Git. Create it once before syncing this app:
+      #   cp k8s/monitoring/grafana-admin.secret.example.yaml \
+      #      k8s/monitoring/grafana-admin.secret.yaml
+      #   # edit it, then:
+      #   kubectl apply -f k8s/monitoring/grafana-admin.secret.yaml
+      #
+      # Recruiters never need this (anonymous Viewer access is enabled below);
+      # it's only for YOU to log in and edit dashboards. The grafana-demo-user
+      # Job reads the same Secret to talk to Grafana's admin API.
+      admin:
+        existingSecret: grafana-admin-credentials
+        userKey: admin-user
+        passwordKey: admin-password
 
       # Environment variables override grafana.ini and are the most reliable
       # way to set auth config. We set anonymous access here so it can't be
